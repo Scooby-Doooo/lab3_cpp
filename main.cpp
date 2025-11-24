@@ -5,40 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <sstream>
-
-// Check for osyncstream support
-#if __has_include(<syncstream>)
-    #include <syncstream>
-    #ifdef __cpp_lib_syncstream
-        #define HAS_OSYNCSTREAM
-    #endif
-#endif
-
-#ifndef HAS_OSYNCSTREAM
-    std::mutex cout_mutex;
-    struct osyncstream {
-        std::stringstream ss;
-        std::ostream& target;
-        osyncstream(std::ostream& os) : target(os) {}
-        ~osyncstream() {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            target << ss.rdbuf();
-            target.flush();
-        }
-        template<typename T>
-        osyncstream& operator<<(const T& x) {
-            ss << x;
-            return *this;
-        }
-        // Support manipulators like std::endl
-        osyncstream& operator<<(std::ostream& (*manip)(std::ostream&)) {
-            manip(ss);
-            return *this;
-        }
-    };
-#else
-    using std::osyncstream;
-#endif
+#include "utils.h"
 
 // Synchronization primitives
 std::latch latch_a(7);
@@ -52,9 +19,6 @@ std::latch latch_h(5);
 
 // Function to simulate action execution
 void f(char name, int index) {
-    // Simulate some work (optional, but good for realism)
-    // std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    
     osyncstream(std::cout) << "From set " << name << " action " << index << " executed." << std::endl;
 }
 
@@ -76,7 +40,6 @@ void thread1_func() {
     latch_b.count_down();
 
     // --- Stage E ---
-    // Depends on B
     latch_b.wait();
     
     f('e', 1);
@@ -89,7 +52,6 @@ void thread1_func() {
     latch_e.count_down();
 
     // --- Stage I ---
-    // Depends on E and F
     latch_e.wait();
     latch_f.wait();
 
@@ -116,7 +78,6 @@ void thread2_func() {
     latch_b.count_down();
 
     // --- Stage F ---
-    // Depends on C
     latch_c.wait();
 
     f('f', 1);
@@ -129,7 +90,6 @@ void thread2_func() {
     latch_f.count_down();
 
     // --- Stage I ---
-    // Depends on E and F
     latch_e.wait();
     latch_f.wait();
 
@@ -156,7 +116,6 @@ void thread3_func() {
     latch_c.count_down();
 
     // --- Stage F & G ---
-    // Both depend on C
     latch_c.wait();
 
     // F part
@@ -172,7 +131,6 @@ void thread3_func() {
     latch_g.count_down();
 
     // --- Stage I ---
-    // Depends on E and F
     latch_e.wait();
     latch_f.wait();
 
@@ -180,7 +138,6 @@ void thread3_func() {
     f('i', 8);
 
     // --- Stage J ---
-    // Depends on G and H
     latch_g.wait();
     latch_h.wait();
 
@@ -206,7 +163,6 @@ void thread4_func() {
     latch_d.count_down();
 
     // --- Stage G ---
-    // Depends on C
     latch_c.wait();
 
     f('g', 2);
@@ -219,7 +175,6 @@ void thread4_func() {
     latch_g.count_down();
 
     // --- Stage J ---
-    // Depends on G and H
     latch_g.wait();
     latch_h.wait();
 
@@ -243,7 +198,6 @@ void thread5_func() {
     latch_d.count_down();
 
     // --- Stage H ---
-    // Depends on D
     latch_d.wait();
 
     f('h', 1);
@@ -258,7 +212,6 @@ void thread5_func() {
     latch_h.count_down();
 
     // --- Stage J ---
-    // Depends on G and H
     latch_g.wait();
     latch_h.wait();
 
@@ -275,13 +228,6 @@ int main() {
     std::jthread t4(thread4_func);
     std::jthread t5(thread5_func);
 
-    // jthread automatically joins on destruction
-    // But we can wait explicitly if we want to print "Finished" after they are done
-    // The destructors will block until threads finish.
-    
-    // To ensure "Обчислення завершено." prints at the very end, we can let scopes handle it
-    // or join explicitly.
-    // Let's join explicitly to be clear.
     t1.join();
     t2.join();
     t3.join();
